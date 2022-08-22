@@ -14,6 +14,10 @@ from copy import copy
 import numpy as np
 from sklearn.utils.random import sample_without_replacement
 
+from iminuit import Minuit
+from iminuit.cost import LeastSquares
+from scipy.optimize import curve_fit
+
 from .functions import _Function
 from .utils import check_random_state
 
@@ -89,6 +93,8 @@ class _Program(object):
     program : list, optional (default=None)
         The flattened tree representation of the program. If None, a new naive
         random tree will be grown. If provided, it will be validated.
+        
+    HELP SHOULD ADD A PARAMETER : n_free describing how much free param are allowed
 
     Attributes
     ----------
@@ -131,6 +137,7 @@ class _Program(object):
                  p_point_replace,
                  parsimony_coefficient,
                  random_state,
+                 n_free,
                  transformer=None,
                  feature_names=None,
                  program=None):
@@ -144,6 +151,7 @@ class _Program(object):
         self.metric = metric
         self.p_point_replace = p_point_replace
         self.parsimony_coefficient = parsimony_coefficient
+        self.n_free = n_free
         self.transformer = transformer
         self.feature_names = feature_names
         self.program = program
@@ -161,6 +169,7 @@ class _Program(object):
         self._n_samples = None
         self._max_samples = None
         self._indices_state = None
+        self.current_best_intermediate_result = None
 
     def build_program(self, random_state):
         """Build a naive random program.
@@ -188,10 +197,16 @@ class _Program(object):
         program = [function]
         terminal_stack = [function.arity]
 
+        # HELP terminal_stack : On random une function et on recupere on arity
+        # HELP self.n_features : Nombre de dimension de X
+        # HELP self.function_set : Nombre d'operation inputed
+        
         while terminal_stack:
+            
             depth = len(terminal_stack)
-            choice = self.n_features + len(self.function_set)
+            choice = self.n_features + len(self.function_set) + self.n_free
             choice = random_state.randint(choice)
+            
             # Determine if we are adding a function or terminal
             if (depth < max_depth) and (method == 'full' or
                                         choice <= len(self.function_set)):
@@ -202,20 +217,35 @@ class _Program(object):
             else:
                 # We need a terminal, add a variable or constant
                 if self.const_range is not None:
-                    terminal = random_state.randint(self.n_features + 1)
+                    terminal = random_state.randint(self.n_features + self.n_free +1)
                 else:
-                    terminal = random_state.randint(self.n_features)
-                if terminal == self.n_features:
+                    terminal = random_state.randint(self.n_features + self.n_free)
+                    
+                # HELP    
+                # on random un entier entre 0 et n = len([X1, X2, X3 ...])+1
+                # Si on tombe sur n-1 ou moins c'est un des X qui est choisi
+                # Si on tombe sur n alors on random un float
+                # ON AJOUTE la chose suivante :
+                # on random un entier entre 0 et n = len([X1, X2, X3 ...]) + 1 + n_free
+                # Si on est > n alors ca sera une lettre 'A', 'B', 'C' ...
+                
+                if terminal == self.n_features + self.n_free:
                     terminal = random_state.uniform(*self.const_range)
                     if self.const_range is None:
                         # We should never get here
                         raise ValueError('A constant was produced with '
                                          'const_range=None.')
+                        
+                elif terminal >= self.n_features:
+                    terminal = f'C{terminal-self.n_features}'
+                    
                 program.append(terminal)
+
                 terminal_stack[-1] -= 1
                 while terminal_stack[-1] == 0:
                     terminal_stack.pop()
                     if not terminal_stack:
+
                         return program
                     terminal_stack[-1] -= 1
 
@@ -249,6 +279,10 @@ class _Program(object):
                         output += 'X%s' % node
                     else:
                         output += self.feature_names[node]
+                        
+                elif isinstance(node, str):
+                    output += node
+                        
                 else:
                     output += '%.3f' % node
                 terminals[-1] -= 1
@@ -339,6 +373,10 @@ class _Program(object):
         """Calculates the number of functions and terminals in the program."""
         return len(self.program)
 
+    
+    #HELP THIS EXECUTE IS RUN FOR EACH TREE SEPARATELY
+    # PROGRAM IS A LIST OF ALL THE NODES AND LEAFS
+    
     def execute(self, X):
         """Execute the program according to X.
 
@@ -356,37 +394,77 @@ class _Program(object):
         """
         # Check for single-node programs
         node = self.program[0]
+
         if isinstance(node, float):
             return np.repeat(node, X.shape[0])
+        
+        # If there is only one free parameter in the tree we dont bother to perform a minimization
+        # We just return the mean of y
+        if isinstance(node, str):
+            return np.repeat(np.mean(self.y), X.shape[0])
+        
         if isinstance(node, int):
             return X[:, node]
+        
+        # In the dictionnary you should add you initial guess for the fit
+        parameters_dict = {}
+        for i in range(self.n_free):
+            parameters_dict[f'C{i}'] = 0
+        
+        # If there are free parameters in the tree we minimize them
 
+        if len([item for item in list(set(self.program)) if type(item)==str]) != 0:
+
+            # Proceed with the minimization
+            Mfit = Minuit(self.f_minimize, *parameters_dict.values())
+            Mfit.migrad()
+
+            self.f_minimize(*Mfit.values)
+
+
+        # Else it is useless to go through minimization we just run it once
+        else :
+            self.f_minimize()
+            
+        return self.current_best_intermediate_result
+
+    def f_minimize(self, *parameters_guess):
+        
+        l = self.program.copy()
+        for i in range(self.n_free):
+            l = [parameters_guess[i] if item == f'C{i}' else item for item in l]
+        
         apply_stack = []
 
-        for node in self.program:
+        for node in l: # Run for each node and leaf of the tree 
 
             if isinstance(node, _Function):
                 apply_stack.append([node])
             else:
                 # Lazily evaluate later
                 apply_stack[-1].append(node)
-
+        
             while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1:
                 # Apply functions that have sufficient arguments
                 function = apply_stack[-1][0]
-                terminals = [np.repeat(t, X.shape[0]) if isinstance(t, float)
-                             else X[:, t] if isinstance(t, int)
+                terminals = [np.repeat(t, self.X.shape[0]) if isinstance(t, float)
+                             else np.repeat(t, self.X.shape[0]) if isinstance(t, str)
+                             else self.X[:, t] if isinstance(t, int)
                              else t for t in apply_stack[-1][1:]]
+                
                 intermediate_result = function(*terminals)
+
+
                 if len(apply_stack) != 1:
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_result)
                 else:
-                    return intermediate_result
-
-        # We should never get here
+                    self.current_best_intermediate_result = intermediate_result
+                    return self.metric(self.y, intermediate_result, self.sample_weight)
+                
         return None
 
+                
     def get_all_indices(self, n_samples=None, max_samples=None,
                         random_state=None):
         """Get the indices on which to evaluate the fitness of a program.
@@ -460,6 +538,7 @@ class _Program(object):
 
         """
         y_pred = self.execute(X)
+        
         if self.transformer:
             y_pred = self.transformer(y_pred)
         raw_fitness = self.metric(y, y_pred, sample_weight)
@@ -551,10 +630,12 @@ class _Program(object):
         # Get a subtree to replace
         start, end = self.get_subtree(random_state)
         removed = range(start, end)
+        
         # Get a subtree to donate
         donor_start, donor_end = self.get_subtree(random_state, donor)
         donor_removed = list(set(range(len(donor))) -
                              set(range(donor_start, donor_end)))
+        
         # Insert genetic material from donor
         return (self.program[:start] +
                 donor[donor_start:donor_end] +
@@ -650,17 +731,22 @@ class _Program(object):
                 replacement = self.arities[arity][replacement]
                 program[node] = replacement
             else:
+                # HELP ON RAJOUTE LA POSSIBLITLE DE TIRER DES CONSTANTES
                 # We've got a terminal, add a const or variable
                 if self.const_range is not None:
-                    terminal = random_state.randint(self.n_features + 1)
+                    terminal = random_state.randint(self.n_features + self.n_free + 1)
                 else:
-                    terminal = random_state.randint(self.n_features)
-                if terminal == self.n_features:
+                    terminal = random_state.randint(self.n_features + self.n_free)
+                    
+                if terminal == self.n_features + self.n_free:
                     terminal = random_state.uniform(*self.const_range)
                     if self.const_range is None:
                         # We should never get here
                         raise ValueError('A constant was produced with '
                                          'const_range=None.')
+                        
+                elif terminal >= self.n_features:
+                    terminal = f'C{terminal-self.n_features}'
                 program[node] = terminal
 
         return program, list(mutate)
