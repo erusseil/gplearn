@@ -58,6 +58,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     p_point_replace = params['p_point_replace']
     feature_names = params['feature_names']
     n_free = params['n_free']
+    free_lim = params['free_lim']
 
     max_samples = ()
     for i in range(len(n_samples)):
@@ -134,6 +135,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
                            p_point_replace=p_point_replace,
                            parsimony_coefficient=parsimony_coefficient,
                            n_free=n_free,
+                           free_lim=free_lim,
                            feature_names=feature_names,
                            random_state=random_state,
                            program=program)
@@ -212,7 +214,8 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                  n_jobs=1,
                  verbose=0,
                  random_state=None,
-                 n_free=0):
+                 n_free=0,
+                 free_lim=(None, None)):
 
         self.population_size = population_size
         self.hall_of_fame = hall_of_fame
@@ -241,6 +244,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         self.verbose = verbose
         self.random_state = random_state
         self.n_free = n_free
+        self.free_lim = free_lim
 
     def _verbose_reporter(self, run_details=None):
         """A report of the progress of the evolution process.
@@ -859,7 +863,8 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
                  n_jobs=1,
                  verbose=0,
                  random_state=None,
-                 n_free=0):
+                 n_free=0,
+                 free_lim=(-100, 100)):
         
         super(SymbolicRegressor, self).__init__(
             population_size=population_size,
@@ -884,7 +889,8 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
             n_jobs=n_jobs,
             verbose=verbose,
             random_state=random_state,
-            n_free=n_free)
+            n_free=n_free,
+            free_lim=free_lim)
 
     def __str__(self):
         """Overloads `print` output of the object to resemble a LISP tree."""

@@ -138,6 +138,7 @@ class _Program(object):
                  parsimony_coefficient,
                  random_state,
                  n_free,
+                 free_lim=(-100, 100),
                  transformer=None,
                  feature_names=None,
                  program=None):
@@ -152,6 +153,7 @@ class _Program(object):
         self.p_point_replace = p_point_replace
         self.parsimony_coefficient = parsimony_coefficient
         self.n_free = n_free
+        self.free_lim = free_lim
         self.transformer = transformer
         self.feature_names = feature_names
         self.program = program
@@ -422,8 +424,10 @@ class _Program(object):
         
         # In the dictionnary you should add you initial guess for the fit
         parameters_dict = {}
+        p_names = ()
         for i in range(self.n_free):
             parameters_dict[f'C{i}'] = 0
+            p_names += (f'C{i}', )
         
         # If there are free parameters in the tree we minimize them
 
@@ -434,9 +438,14 @@ class _Program(object):
             
             for i in range(len(X)):
                 self.current_n_intermediate_result = i
-                Mfit = Minuit(self.f_minimize, *parameters_dict.values())
+                Mfit = Minuit(self.f_minimize, **parameters_dict, name=p_names)
+                for p_name in range(len(p_names)):
+                    Mfit.limits[p_name] = self.free_lim
+
                 Mfit.migrad()
                 self.f_minimize(*Mfit.values)
+                
+                    
                 self.current_best_param_fit[i] = Mfit.values
 
 
@@ -448,8 +457,6 @@ class _Program(object):
                 self.current_n_intermediate_result = i
                 self.f_minimize()
                 
-
-            
         return self.current_best_intermediate_result
 
     def f_minimize(self, *parameters_guess):
