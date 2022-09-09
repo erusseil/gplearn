@@ -37,7 +37,13 @@ MAX_INT = np.iinfo(np.int32).max
 
 def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     """Private function used to build a batch of programs within a job."""
-    n_samples, n_features = X.shape
+ 
+    # All objects have the same number of features anyway, no need to create a tuple
+    n_features = X[0].shape[1]
+    n_samples = ()
+    for i in range(len(X)):
+        n_samples += (X[i].shape[0],)
+
     # Unpack parameters
     tournament_size = params['tournament_size']
     function_set = params['function_set']
@@ -50,11 +56,13 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     parsimony_coefficient = params['parsimony_coefficient']
     method_probs = params['method_probs']
     p_point_replace = params['p_point_replace']
-    max_samples = params['max_samples']
     feature_names = params['feature_names']
     n_free = params['n_free']
 
-    max_samples = int(max_samples * n_samples)
+    max_samples = ()
+    for i in range(len(n_samples)):
+        max_samples += (int(params['max_samples'] * n_samples[i]),)
+
 
     def _tournament():
         """Find the fittest individual from a sub-population."""
@@ -134,20 +142,27 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
         program.y = y
         program.X = X
         program.sample_weight = sample_weight
-
+  
         # Draw samples, using sample weights, and then fit
-        if sample_weight is None:
-            curr_sample_weight = np.ones((n_samples,))
-        else:
-            curr_sample_weight = sample_weight.copy()
-        oob_sample_weight = curr_sample_weight.copy()
+
+        curr_sample_weight, oob_sample_weight = (), ()
+        for i in range(len(n_samples)):
+            if sample_weight[i] is None:
+                curr_sample_weight += (np.ones((n_samples[i],)),)
+                oob_sample_weight += (np.ones((n_samples[i],)),)
+
+            else:
+                curr_sample_weight += (None,)
+                oob_sample_weight += (np.ones((n_samples[i],)),)
+            
 
         indices, not_indices = program.get_all_indices(n_samples,
                                                        max_samples,
                                                        random_state)
-
-        curr_sample_weight[not_indices] = 0
-        oob_sample_weight[indices] = 0
+        
+        for i in range(len(curr_sample_weight)):
+            curr_sample_weight[i][not_indices[i]] = 0
+            oob_sample_weight[i][indices[i]] = 0
 
         program.raw_fitness_ = program.raw_fitness(X, y, curr_sample_weight)
         if max_samples < n_samples:
@@ -290,33 +305,57 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
 
         """
         random_state = check_random_state(self.random_state)
+        
+        if type(X) != tuple:
+            X = (X,)
+        if type(y) != tuple:
+            y = (y,)
+            
+        if sample_weight == None:
+            sample_weight = (None, ) * len(X)
+            
+        if type(sample_weight) != tuple:
+            sample_weight = (sample_weight,)
 
-        # Check arrays
-        if sample_weight is not None:
-            sample_weight = _check_sample_weight(sample_weight, X)
+        if len(X) != len(y):
+            raise ValueError('Multiple objects error : X and y are not the same length')
 
-        if isinstance(self, ClassifierMixin):
-            X, y = self._validate_data(X, y, y_numeric=False)
-            check_classification_targets(y)
+        if len(X) != len(sample_weight):
+            raise ValueError('Multiple objects error : Sample weight doesnt describe the same number of objects as X and y')
 
-            if self.class_weight:
-                if sample_weight is None:
-                    sample_weight = 1.
-                # modify the sample weights with the corresponding class weight
-                sample_weight = (sample_weight *
-                                 compute_sample_weight(self.class_weight, y))
+        for i in range(len(X)):
+            if X[0].shape[1] != X[i].shape[1]:
+                raise ValueError('Multiple objects error : all X should have the same number of features')
+                
+        check_X, check_y, check_weight= list(X), list(y), list(sample_weight)
+            
+        for idx in range(len(X)):
+            # Check arrays
+            if check_weight[idx] is not None:
+                check_weight[idx] = _check_sample_weight(check_weight[idx], X[idx])
 
-            self.classes_, y = np.unique(y, return_inverse=True)
-            n_trim_classes = np.count_nonzero(np.bincount(y, sample_weight))
-            if n_trim_classes != 2:
-                raise ValueError("y contains %d class after sample_weight "
-                                 "trimmed classes with zero weights, while 2 "
-                                 "classes are required."
-                                 % n_trim_classes)
-            self.n_classes_ = len(self.classes_)
+            if isinstance(self, ClassifierMixin):
+                check_X[idx], check_y[idx] = self._validate_data(check_X[idx], check_y[idx], y_numeric=False)
+                check_classification_targets(check_y[idx])
 
-        else:
-            X, y = self._validate_data(X, y, y_numeric=True)
+                if self.class_weight:
+                    if check_weight[idx] is None:
+                        check_weight[idx] = 1.
+                    # modify the sample weights with the corresponding class weight
+                    check_weight[idx] = (check_weight[idx] *
+                                     compute_sample_weight(self.class_weight, check_y[idx]))
+
+                self.classes_, check_y[idx] = np.unique(check_y[idx], return_inverse=True)
+                n_trim_classes = np.count_nonzero(np.bincount(check_y[idx], check_weight[idx]))
+                if n_trim_classes != 2:
+                    raise ValueError("y contains %d class after sample_weight "
+                                     "trimmed classes with zero weights, while 2 "
+                                     "classes are required."
+                                     % n_trim_classes)
+                self.n_classes_ = len(self.classes_)
+
+            else:
+                check_X[idx], check_y[idx] = self._validate_data(check_X[idx], check_y[idx], y_numeric=True)
 
         hall_of_fame = self.hall_of_fame
         if hall_of_fame is None:
@@ -587,12 +626,15 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                                    hall_of_fame[components]]
 
         else:
-            # Find the best individual in the final generation
+            # Find the best individual in the final generation   
             if self._metric.greater_is_better:
                 self._program = self._programs[-1][np.argmax(fitness)]
             else:
                 self._program = self._programs[-1][np.argmin(fitness)]
 
+        if self.n_free>0:
+            print('Best fitted parametric values :')
+            print(self._program.current_best_param_fit)
         return self
 
 

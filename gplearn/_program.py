@@ -170,6 +170,7 @@ class _Program(object):
         self._max_samples = None
         self._indices_state = None
         self.current_best_intermediate_result = None
+        self.current_best_param_fit = None
 
     def build_program(self, random_state):
         """Build a naive random program.
@@ -392,19 +393,32 @@ class _Program(object):
             The result of executing the program on X.
 
         """
+            
         # Check for single-node programs
         node = self.program[0]
 
-        if isinstance(node, float):
-            return np.repeat(node, X.shape[0])
+        if isinstance(node, float):    
+            intermediate = ()
+            for i in range(len(X)):
+                intermediate += (np.repeat(node, X[i].shape[0]),)
+            return intermediate
+
         
         # If there is only one free parameter in the tree we dont bother to perform a minimization
         # We just return the mean of y
         if isinstance(node, str):
-            return np.repeat(np.mean(self.y), X.shape[0])
+            intermediate = ()
+            for i in range(len(X)):
+                intermediate += (np.repeat(np.mean(self.y[i]), X[i].shape[0]),)
+            return intermediate
+
         
         if isinstance(node, int):
-            return X[:, node]
+            intermediate = ()
+            for i in range(len(X)):
+                intermediate += (X[i][:, node],)
+            return intermediate
+
         
         # In the dictionnary you should add you initial guess for the fit
         parameters_dict = {}
@@ -415,20 +429,33 @@ class _Program(object):
 
         if len([item for item in list(set(self.program)) if type(item)==str]) != 0:
 
-            # Proceed with the minimization
-            Mfit = Minuit(self.f_minimize, *parameters_dict.values())
-            Mfit.migrad()
-
-            self.f_minimize(*Mfit.values)
+            self.current_best_intermediate_result = np.array([None]*len(X))
+            self.current_best_param_fit = np.array([None]*len(X))
+            
+            for i in range(len(X)):
+                self.current_n_intermediate_result = i
+                Mfit = Minuit(self.f_minimize, *parameters_dict.values())
+                Mfit.migrad()
+                self.f_minimize(*Mfit.values)
+                self.current_best_param_fit[i] = Mfit.values
 
 
         # Else it is useless to go through minimization we just run it once
         else :
-            self.f_minimize()
+            self.current_best_intermediate_result = np.array([None]*len(X))
+            self.current_best_param_fit = np.array([None]*len(X))
+            for i in range(len(X)):
+                self.current_n_intermediate_result = i
+                self.f_minimize()
+                
+
             
         return self.current_best_intermediate_result
 
     def f_minimize(self, *parameters_guess):
+        
+        pos = self.current_n_intermediate_result
+        local_X, local_y, local_weight = self.X[pos], self.y[pos], self.sample_weight[pos]
         
         l = self.program.copy()
         for i in range(self.n_free):
@@ -447,9 +474,9 @@ class _Program(object):
             while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1:
                 # Apply functions that have sufficient arguments
                 function = apply_stack[-1][0]
-                terminals = [np.repeat(t, self.X.shape[0]) if isinstance(t, float)
-                             else np.repeat(t, self.X.shape[0]) if isinstance(t, str)
-                             else self.X[:, t] if isinstance(t, int)
+                terminals = [np.repeat(t, local_X.shape[0]) if isinstance(t, float)
+                             else np.repeat(t, local_X.shape[0]) if isinstance(t, str)
+                             else local_X[:, t] if isinstance(t, int)
                              else t for t in apply_stack[-1][1:]]
                 
                 intermediate_result = function(*terminals)
@@ -459,11 +486,10 @@ class _Program(object):
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_result)
                 else:
-                    self.current_best_intermediate_result = intermediate_result
-                    return self.metric(self.y, intermediate_result, self.sample_weight)
+                    self.current_best_intermediate_result[pos] = intermediate_result 
+                    return self.metric(local_y, intermediate_result, local_weight)
                 
         return None
-
                 
     def get_all_indices(self, n_samples=None, max_samples=None,
                         random_state=None):
@@ -489,6 +515,7 @@ class _Program(object):
             The out-of-sample indices.
 
         """
+
         if self._indices_state is None and random_state is None:
             raise ValueError('The program has not been evaluated for fitness '
                              'yet, indices not available.')
@@ -503,12 +530,14 @@ class _Program(object):
         indices_state = check_random_state(None)
         indices_state.set_state(self._indices_state)
 
-        not_indices = sample_without_replacement(
-            self._n_samples,
-            self._n_samples - self._max_samples,
-            random_state=indices_state)
-        sample_counts = np.bincount(not_indices, minlength=self._n_samples)
-        indices = np.where(sample_counts == 0)[0]
+        not_indices, sample_counts, indices = (), (), ()
+        for i in range(len(self._n_samples)):
+            not_indices += (sample_without_replacement(
+                self._n_samples[i],
+                self._n_samples[i] - self._max_samples[i],
+                random_state=indices_state),)
+            sample_counts += (np.bincount(not_indices[i], minlength=self._n_samples[i]),)
+            indices += (np.where(sample_counts[i] == 0)[0],)
 
         return indices, not_indices
 
@@ -537,12 +566,18 @@ class _Program(object):
             The raw fitness of the program.
 
         """
+            
         y_pred = self.execute(X)
-        
-        if self.transformer:
-            y_pred = self.transformer(y_pred)
-        raw_fitness = self.metric(y, y_pred, sample_weight)
 
+        if self.transformer:
+            raise ValueError('You shouldnt only use transformer with this modified package')
+            
+        raw_fitness = ()
+        for i in range(len(X)):
+            raw_fitness += (self.metric(y[i], y_pred[i], sample_weight[i]),)
+
+        raw_fitness = np.mean(raw_fitness)
+            
         return raw_fitness
 
     def fitness(self, parsimony_coefficient=None):
