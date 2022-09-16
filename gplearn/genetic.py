@@ -59,6 +59,10 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     feature_names = params['feature_names']
     n_free = params['n_free']
     free_lim = params['free_lim']
+    addX = params['addX']
+    addY = params['addY']
+    mulX = params['mulX']
+    mulY = params['mulY']
 
     max_samples = ()
     for i in range(len(n_samples)):
@@ -136,6 +140,10 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
                            parsimony_coefficient=parsimony_coefficient,
                            n_free=n_free,
                            free_lim=free_lim,
+                           addX=addX,
+                           addY=addY,
+                           mulX=mulX,
+                           mulY=mulY,
                            feature_names=feature_names,
                            random_state=random_state,
                            program=program)
@@ -215,7 +223,11 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                  verbose=0,
                  random_state=None,
                  n_free=0,
-                 free_lim=(None, None)):
+                 free_lim=(None, None),
+                 addX=False,
+                 addY=False,
+                 mulX=False,
+                 mulY=False):
 
         self.population_size = population_size
         self.hall_of_fame = hall_of_fame
@@ -245,6 +257,10 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         self.random_state = random_state
         self.n_free = n_free
         self.free_lim = free_lim
+        self.addX=addX
+        self.addY=addY
+        self.mulX=mulX
+        self.mulY=mulY
 
     def _verbose_reporter(self, run_details=None):
         """A report of the progress of the evolution process.
@@ -636,7 +652,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
             else:
                 self._program = self._programs[-1][np.argmin(fitness)]
 
-        if self.n_free>0:
+        if (self.n_free>0) | self.addX | self.addY | self.mulX | self.mulY:
             print('Best fitted parametric values :')
             print(self._program.current_best_param_fit)
         return self
@@ -864,7 +880,11 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
                  verbose=0,
                  random_state=None,
                  n_free=0,
-                 free_lim=(-100, 100)):
+                 free_lim=(-100, 100),
+                 addX=False,
+                 addY=False,
+                 mulX=False,
+                 mulY=False):
         
         super(SymbolicRegressor, self).__init__(
             population_size=population_size,
@@ -890,7 +910,11 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
             verbose=verbose,
             random_state=random_state,
             n_free=n_free,
-            free_lim=free_lim)
+            free_lim=free_lim,
+            addX=addX,
+            addY=addY,
+            mulX=mulX,
+            mulY=mulY)
 
     def __str__(self):
         """Overloads `print` output of the object to resemble a LISP tree."""

@@ -139,6 +139,10 @@ class _Program(object):
                  random_state,
                  n_free,
                  free_lim=(-100, 100),
+                 addX=False,
+                 addY=False,
+                 mulX=False,
+                 mulY=False,
                  transformer=None,
                  feature_names=None,
                  program=None):
@@ -154,6 +158,10 @@ class _Program(object):
         self.parsimony_coefficient = parsimony_coefficient
         self.n_free = n_free
         self.free_lim = free_lim
+        self.addX=addX
+        self.addY=addY
+        self.mulX=mulX
+        self.mulY=mulY
         self.transformer = transformer
         self.feature_names = feature_names
         self.program = program
@@ -422,17 +430,23 @@ class _Program(object):
             return intermediate
 
         
-        # In the dictionnary you should add you initial guess for the fit
+        # In the dictionnary you should add your initial guess for the fit
         parameters_dict = {}
         p_names = ()
         for i in range(self.n_free):
             parameters_dict[f'C{i}'] = 0
             p_names += (f'C{i}', )
+            
+        # Add invariance_param 
+        for invariance_param in [['addX', 0], ['mulX', 1], ['addY', 0], ['mulY', 1]]:
+            if getattr(self, invariance_param[0]):
+                parameters_dict[invariance_param[0]] = invariance_param[1]
+                p_names += (invariance_param[0], )
+            
+        # We minimize if we have at least one invariance parameter or if the tree contains at least one free param
+        param_condition = self.addX | self.mulX | self.addY | self.mulY | (len([item for item in list(set(self.program)) if type(item)==str]) != 0)
         
-        # If there are free parameters in the tree we minimize them
-
-        if len([item for item in list(set(self.program)) if type(item)==str]) != 0:
-
+        if param_condition:
             self.current_best_intermediate_result = np.array([None]*len(X))
             self.current_best_param_fit = np.array([None]*len(X))
             
@@ -444,10 +458,7 @@ class _Program(object):
 
                 Mfit.migrad()
                 self.f_minimize(*Mfit.values)
-                
-                    
                 self.current_best_param_fit[i] = Mfit.values
-
 
         # Else it is useless to go through minimization we just run it once
         else :
@@ -462,7 +473,31 @@ class _Program(object):
     def f_minimize(self, *parameters_guess):
         
         pos = self.current_n_intermediate_result
-        local_X, local_y, local_weight = self.X[pos], self.y[pos], self.sample_weight[pos]
+        
+        if self.sample_weight[pos] != None:
+            local_weight = self.sample_weight[pos].copy()
+        else:
+            local_weight = None
+            
+        local_X, local_y = self.X[pos].copy(), self.y[pos].copy()
+
+        count_invariance_param = 0
+
+        if self.addX:
+            inv_val = parameters_guess[self.n_free + count_invariance_param]
+            if inv_val != inv_val:
+                inv_val = 0
+
+            local_X += inv_val
+            count_invariance_param += 1
+
+        if self.mulX:
+            inv_val = parameters_guess[self.n_free + count_invariance_param]
+            if inv_val != inv_val:
+                inv_val = 1
+
+            local_X *= inv_val
+            count_invariance_param += 1
         
         l = self.program.copy()
         for i in range(self.n_free):
@@ -493,6 +528,28 @@ class _Program(object):
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_result)
                 else:
+                    
+                    
+                    if self.addY:
+                        inv_val = parameters_guess[self.n_free + count_invariance_param]
+                        if inv_val != inv_val:
+                            inv_val = 0
+
+                        intermediate_result += inv_val
+                        count_invariance_param += 1
+                        
+                    if self.mulY:
+                        inv_val = parameters_guess[self.n_free + count_invariance_param]
+                        if inv_val != inv_val:
+                            inv_val = 1
+
+                        intermediate_result *= inv_val
+                        
+                        if local_weight != None:
+                            local_weight *= inv_val
+                            
+                        count_invariance_param += 1
+
                     self.current_best_intermediate_result[pos] = intermediate_result 
                     return self.metric(local_y, intermediate_result, local_weight)
                 
