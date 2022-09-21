@@ -238,7 +238,7 @@ class _Program(object):
                 # Si on tombe sur n alors on random un float
                 # ON AJOUTE la chose suivante :
                 # on random un entier entre 0 et n = len([X1, X2, X3 ...]) + 1 + n_free
-                # Si on est > n alors ca sera une lettre 'A', 'B', 'C' ...
+                # Si on est > n alors ca sera une lettre 'A', 'self.sB', 'C' ...
                 
                 if terminal == self.n_features + self.n_free:
                     terminal = random_state.uniform(*self.const_range)
@@ -403,7 +403,6 @@ class _Program(object):
             The result of executing the program on X.
 
         """
-            
         # Check for single-node programs
         node = self.program[0]
 
@@ -474,7 +473,7 @@ class _Program(object):
         
         pos = self.current_n_intermediate_result
         
-        if self.sample_weight[pos] != None:
+        if type(self.sample_weight[pos]) != type(None):
             local_weight = self.sample_weight[pos].copy()
         else:
             local_weight = None
@@ -545,12 +544,12 @@ class _Program(object):
 
                         intermediate_result *= inv_val
                         
-                        if local_weight != None:
+                        if type(local_weight) != type(None):
                             local_weight *= inv_val
                             
                         count_invariance_param += 1
 
-                    self.current_best_intermediate_result[pos] = intermediate_result 
+                    self.current_best_intermediate_result[pos] = intermediate_result
                     return self.metric(local_y, intermediate_result, local_weight)
                 
         return None

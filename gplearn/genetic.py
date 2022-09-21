@@ -162,14 +162,13 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
                 oob_sample_weight += (np.ones((n_samples[i],)),)
 
             else:
-                curr_sample_weight += (None,)
-                oob_sample_weight += (np.ones((n_samples[i],)),)
-            
-
+                curr_sample_weight += (np.array(sample_weight[i]),)
+                oob_sample_weight += (np.array(sample_weight[i]),)
+           
         indices, not_indices = program.get_all_indices(n_samples,
                                                        max_samples,
                                                        random_state)
-        
+
         for i in range(len(curr_sample_weight)):
             curr_sample_weight[i][not_indices[i]] = 0
             oob_sample_weight[i][indices[i]] = 0
