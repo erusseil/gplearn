@@ -543,9 +543,6 @@ class _Program(object):
                             inv_val = 1
 
                         intermediate_result *= inv_val
-                        
-                        if type(local_weight) != type(None):
-                            local_weight *= inv_val
                             
                         count_invariance_param += 1
 
