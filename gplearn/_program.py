@@ -94,7 +94,32 @@ class _Program(object):
         The flattened tree representation of the program. If None, a new naive
         random tree will be grown. If provided, it will be validated.
         
-    HELP SHOULD ADD A PARAMETER : n_free describing how much free param are allowed
+    n_free : int, MvSR option, number of free parameter allowed.
+    
+    free_lim : tuple, MvSR option, boundaries for the minimization of all 
+        free parameters. Optional (default=(-100, 100)).
+
+    addX : tuple of boolean, MvSR option, use translation invariance for
+        each X dimension. 
+        Effectively adds a parameter redefining X such that X' = X + P.
+        If a boolean is given, transforms it to tuple of correct length.
+        Optional (default=False).
+        
+    mulX : tuple of boolean, MvSR option, use scale invariance for
+        each X dimension. (applied after translation invariance)
+        Effectively adds a parameter redefining X such that X' = X * P.
+        If a boolean is given, transforms it to tuple of correct length.
+        Optional (default=False).
+        
+    addY : boolean, MvSR option, use translation invariance for Y. 
+        Effectively adds a parameter redefining f(X) such that f(X)' = f(X) + P.
+        Optional (default=False).
+        
+    mulY : boolean, MvSR option, use scale invariance for Y. 
+        Effectively adds a parameter redefining f(X) such that f(X)' = f(X) * P.
+        (applied after translation invariance)
+        Optional (default=False).
+
 
     Attributes
     ----------
@@ -126,26 +151,28 @@ class _Program(object):
 
     """
 
-    def __init__(self,
-                 function_set,
-                 arities,
-                 init_depth,
-                 init_method,
-                 n_features,
-                 const_range,
-                 metric,
-                 p_point_replace,
-                 parsimony_coefficient,
-                 random_state,
-                 n_free,
-                 free_lim=(-100, 100),
-                 addX=False,
-                 addY=False,
-                 mulX=False,
-                 mulY=False,
-                 transformer=None,
-                 feature_names=None,
-                 program=None):
+    def __init__(
+        self,
+        function_set,
+        arities,
+        init_depth,
+        init_method,
+        n_features,
+        const_range,
+        metric,
+        p_point_replace,
+        parsimony_coefficient,
+        random_state,
+        n_free,
+        free_lim=(-100, 100),
+        addX=False,
+        addY=False,
+        mulX=False,
+        mulY=False,
+        transformer=None,
+        feature_names=None,
+        program=None,
+    ):
 
         self.function_set = function_set
         self.arities = arities
@@ -158,17 +185,17 @@ class _Program(object):
         self.parsimony_coefficient = parsimony_coefficient
         self.n_free = n_free
         self.free_lim = free_lim
-        self.addX=addX
-        self.addY=addY
-        self.mulX=mulX
-        self.mulY=mulY
+        self.addX = addX
+        self.addY = addY
+        self.mulX = mulX
+        self.mulY = mulY
         self.transformer = transformer
         self.feature_names = feature_names
         self.program = program
 
         if self.program is not None:
             if not self.validate_program():
-                raise ValueError('The supplied program is incomplete.')
+                raise ValueError("The supplied program is incomplete.")
         else:
             # Create a naive random program
             self.program = self.build_program(random_state)
@@ -196,8 +223,8 @@ class _Program(object):
             The flattened tree representation of the program.
 
         """
-        if self.init_method == 'half and half':
-            method = ('full' if random_state.randint(2) else 'grow')
+        if self.init_method == "half and half":
+            method = "full" if random_state.randint(2) else "grow"
         else:
             method = self.init_method
         max_depth = random_state.randint(*self.init_depth)
@@ -208,19 +235,16 @@ class _Program(object):
         program = [function]
         terminal_stack = [function.arity]
 
-        # HELP terminal_stack : On random une function et on recupere on arity
-        # HELP self.n_features : Nombre de dimension de X
-        # HELP self.function_set : Nombre d'operation inputed
-        
         while terminal_stack:
-            
+
             depth = len(terminal_stack)
             choice = self.n_features + len(self.function_set) + self.n_free
             choice = random_state.randint(choice)
-            
+
             # Determine if we are adding a function or terminal
-            if (depth < max_depth) and (method == 'full' or
-                                        choice <= len(self.function_set)):
+            if (depth < max_depth) and (
+                method == "full" or choice <= len(self.function_set)
+            ):
                 function = random_state.randint(len(self.function_set))
                 function = self.function_set[function]
                 program.append(function)
@@ -228,28 +252,21 @@ class _Program(object):
             else:
                 # We need a terminal, add a variable or constant
                 if self.const_range is not None:
-                    terminal = random_state.randint(self.n_features + self.n_free +1)
+                    terminal = random_state.randint(self.n_features + self.n_free + 1)
                 else:
                     terminal = random_state.randint(self.n_features + self.n_free)
-                    
-                # HELP    
-                # on random un entier entre 0 et n = len([X1, X2, X3 ...])+1
-                # Si on tombe sur n-1 ou moins c'est un des X qui est choisi
-                # Si on tombe sur n alors on random un float
-                # ON AJOUTE la chose suivante :
-                # on random un entier entre 0 et n = len([X1, X2, X3 ...]) + 1 + n_free
-                # Si on est > n alors ca sera une lettre 'A', 'self.sB', 'C' ...
-                
+
                 if terminal == self.n_features + self.n_free:
                     terminal = random_state.uniform(*self.const_range)
                     if self.const_range is None:
                         # We should never get here
-                        raise ValueError('A constant was produced with '
-                                         'const_range=None.')
-                        
+                        raise ValueError(
+                            "A constant was produced with " "const_range=None."
+                        )
+
                 elif terminal >= self.n_features:
-                    terminal = f'C{terminal-self.n_features}'
-                    
+                    terminal = f"C{terminal-self.n_features}"
+
                 program.append(terminal)
 
                 terminal_stack[-1] -= 1
@@ -279,30 +296,30 @@ class _Program(object):
     def __str__(self):
         """Overloads `print` output of the object to resemble a LISP tree."""
         terminals = [0]
-        output = ''
+        output = ""
         for i, node in enumerate(self.program):
             if isinstance(node, _Function):
                 terminals.append(node.arity)
-                output += node.name + '('
+                output += node.name + "("
             else:
                 if isinstance(node, int):
                     if self.feature_names is None:
-                        output += 'X%s' % node
+                        output += "X%s" % node
                     else:
                         output += self.feature_names[node]
-                        
+
                 elif isinstance(node, str):
                     output += node
-                        
+
                 else:
-                    output += '%.3f' % node
+                    output += "%.3f" % node
                 terminals[-1] -= 1
                 while terminals[-1] == 0:
                     terminals.pop()
                     terminals[-1] -= 1
-                    output += ')'
+                    output += ")"
                 if i != len(self.program) - 1:
-                    output += ', '
+                    output += ", "
         return output
 
     def export_graphviz(self, fade_nodes=None):
@@ -323,42 +340,42 @@ class _Program(object):
         terminals = []
         if fade_nodes is None:
             fade_nodes = []
-        output = 'digraph program {\nnode [style=filled]\n'
+        output = "digraph program {\nnode [style=filled]\n"
         for i, node in enumerate(self.program):
-            fill = '#cecece'
+            fill = "#cecece"
             if isinstance(node, _Function):
                 if i not in fade_nodes:
-                    fill = '#136ed4'
+                    fill = "#136ed4"
                 terminals.append([node.arity, i])
-                output += ('%d [label="%s", fillcolor="%s"] ;\n'
-                           % (i, node.name, fill))
+                output += '%d [label="%s", fillcolor="%s"] ;\n' % (i, node.name, fill)
             else:
                 if i not in fade_nodes:
-                    fill = '#60a6f6'
+                    fill = "#60a6f6"
                 if isinstance(node, int):
                     if self.feature_names is None:
-                        feature_name = 'X%s' % node
+                        feature_name = "X%s" % node
                     else:
                         feature_name = self.feature_names[node]
-                    output += ('%d [label="%s", fillcolor="%s"] ;\n'
-                               % (i, feature_name, fill))
+                    output += '%d [label="%s", fillcolor="%s"] ;\n' % (
+                        i,
+                        feature_name,
+                        fill,
+                    )
                 else:
-                    output += ('%d [label="%.3f", fillcolor="%s"] ;\n'
-                               % (i, node, fill))
+                    output += '%d [label="%.3f", fillcolor="%s"] ;\n' % (i, node, fill)
                 if i == 0:
                     # A degenerative program of only one node
-                    return output + '}'
+                    return output + "}"
                 terminals[-1][0] -= 1
                 terminals[-1].append(i)
                 while terminals[-1][0] == 0:
-                    output += '%d -> %d ;\n' % (terminals[-1][1],
-                                                terminals[-1][-1])
+                    output += "%d -> %d ;\n" % (terminals[-1][1], terminals[-1][-1])
                     terminals[-1].pop()
                     if len(terminals[-1]) == 2:
                         parent = terminals[-1][-1]
                         terminals.pop()
                         if not terminals:
-                            return output + '}'
+                            return output + "}"
                         terminals[-1].append(parent)
                         terminals[-1][0] -= 1
 
@@ -384,10 +401,6 @@ class _Program(object):
         """Calculates the number of functions and terminals in the program."""
         return len(self.program)
 
-    
-    #HELP THIS EXECUTE IS RUN FOR EACH TREE SEPARATELY
-    # PROGRAM IS A LIST OF ALL THE NODES AND LEAFS
-    
     def execute(self, X):
         """Execute the program according to X.
 
@@ -406,13 +419,12 @@ class _Program(object):
         # Check for single-node programs
         node = self.program[0]
 
-        if isinstance(node, float):    
+        if isinstance(node, float):
             intermediate = ()
             for i in range(len(X)):
                 intermediate += (np.repeat(node, X[i].shape[0]),)
             return intermediate
 
-        
         # If there is only one free parameter in the tree we dont bother to perform a minimization
         # We just return the mean of y
         if isinstance(node, str):
@@ -421,42 +433,56 @@ class _Program(object):
                 intermediate += (np.repeat(np.mean(self.y[i]), X[i].shape[0]),)
             return intermediate
 
-        
         if isinstance(node, int):
             intermediate = ()
             for i in range(len(X)):
                 intermediate += (X[i][:, node],)
             return intermediate
 
-        
         # In the dictionnary you should add your initial guess for the fit
         parameters_dict = {}
         p_names = ()
         for i in range(self.n_free):
-            parameters_dict[f'C{i}'] = 1
-            p_names += (f'C{i}', )
-            
-        # Add invariance_param 
+            parameters_dict[f"C{i}"] = 1
+            p_names += (f"C{i}",)
+
+        # Add invariance_param
 
         for dim in range(len(X[0][1])):
-            for invariance_param in [['addX', 0], ['mulX', 1], ['addY', 0], ['mulY', 1]]:
-                if (invariance_param[0] == 'addX') | (invariance_param[0] == 'mulX'):
+            for invariance_param in [
+                ["addX", 0],
+                ["mulX", 1],
+                ["addY", 0],
+                ["mulY", 1],
+            ]:
+                if (invariance_param[0] == "addX") | (invariance_param[0] == "mulX"):
                     valid = getattr(self, invariance_param[0])[dim]
-                    
+
                 else:
                     valid = getattr(self, invariance_param[0])
 
                 if valid:
-                    parameters_dict[invariance_param[0] + str(dim)] = invariance_param[1]
-                    p_names += (invariance_param[0] + str(dim), )
-            
+                    parameters_dict[invariance_param[0] + str(dim)] = invariance_param[
+                        1
+                    ]
+                    p_names += (invariance_param[0] + str(dim),)
+
         # We minimize if we have at least one invariance parameter or if the tree contains at least one free param
-        param_condition = (True in self.addX) | (True in self.mulX) | self.addY | self.mulY | (len([item for item in list(set(self.program)) if type(item)==str]) != 0)
-        
+        param_condition = (
+            (True in self.addX)
+            | (True in self.mulX)
+            | self.addY
+            | self.mulY
+            | (
+                len([item for item in list(set(self.program)) if type(item) == str])
+                != 0
+            )
+        )
+
         if param_condition:
-            self.current_best_intermediate_result = np.array([None]*len(X))
-            self.current_best_param_fit = np.array([None]*len(X))
-            
+            self.current_best_intermediate_result = np.array([None] * len(X))
+            self.current_best_param_fit = np.array([None] * len(X))
+
             for i in range(len(X)):
                 self.current_n_intermediate_result = i
                 Mfit = Minuit(self.f_minimize, **parameters_dict, name=p_names)
@@ -468,24 +494,24 @@ class _Program(object):
                 self.current_best_param_fit[i] = Mfit.values
 
         # Else it is useless to go through minimization we just run it once
-        else :
-            self.current_best_intermediate_result = np.array([None]*len(X))
-            self.current_best_param_fit = np.array([None]*len(X))
+        else:
+            self.current_best_intermediate_result = np.array([None] * len(X))
+            self.current_best_param_fit = np.array([None] * len(X))
             for i in range(len(X)):
                 self.current_n_intermediate_result = i
                 self.f_minimize()
-                
+
         return self.current_best_intermediate_result
 
     def f_minimize(self, *parameters_guess):
-        
+
         pos = self.current_n_intermediate_result
-        
+
         if type(self.sample_weight[pos]) != type(None):
             local_weight = self.sample_weight[pos].copy()
         else:
             local_weight = None
-            
+
         local_y = self.y[pos].copy()
         local_X = self.X[pos].copy()
 
@@ -497,7 +523,7 @@ class _Program(object):
                 if inv_val != inv_val:
                     inv_val = 0
 
-                local_X[:,dim] += inv_val
+                local_X[:, dim] += inv_val
                 count_invariance_param += 1
 
             if self.mulX[dim]:
@@ -505,40 +531,44 @@ class _Program(object):
                 if inv_val != inv_val:
                     inv_val = 1
 
-                local_X[:,dim] *= inv_val
+                local_X[:, dim] *= inv_val
                 count_invariance_param += 1
-        
+
         l = self.program.copy()
         for i in range(self.n_free):
-            l = [parameters_guess[i] if item == f'C{i}' else item for item in l]
-        
+            l = [parameters_guess[i] if item == f"C{i}" else item for item in l]
+
         apply_stack = []
 
-        for node in l: # Run for each node and leaf of the tree 
+        for node in l:  # Run for each node and leaf of the tree
 
             if isinstance(node, _Function):
                 apply_stack.append([node])
             else:
                 # Lazily evaluate later
                 apply_stack[-1].append(node)
-        
+
             while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1:
                 # Apply functions that have sufficient arguments
                 function = apply_stack[-1][0]
-                terminals = [np.repeat(t, local_X.shape[0]) if isinstance(t, float)
-                             else np.repeat(t, local_X.shape[0]) if isinstance(t, str)
-                             else local_X[:, t] if isinstance(t, int)
-                             else t for t in apply_stack[-1][1:]]
-                
-                intermediate_result = function(*terminals)
+                terminals = [
+                    np.repeat(t, local_X.shape[0])
+                    if isinstance(t, float)
+                    else np.repeat(t, local_X.shape[0])
+                    if isinstance(t, str)
+                    else local_X[:, t]
+                    if isinstance(t, int)
+                    else t
+                    for t in apply_stack[-1][1:]
+                ]
 
+                intermediate_result = function(*terminals)
 
                 if len(apply_stack) != 1:
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_result)
                 else:
-                    
-                    
+
                     if self.addY:
                         inv_val = parameters_guess[self.n_free + count_invariance_param]
                         if inv_val != inv_val:
@@ -546,23 +576,22 @@ class _Program(object):
 
                         intermediate_result += inv_val
                         count_invariance_param += 1
-                        
+
                     if self.mulY:
                         inv_val = parameters_guess[self.n_free + count_invariance_param]
                         if inv_val != inv_val:
                             inv_val = 1
 
                         intermediate_result *= inv_val
-                            
+
                         count_invariance_param += 1
 
                     self.current_best_intermediate_result[pos] = intermediate_result
                     return self.metric(local_y, intermediate_result, local_weight)
-                
+
         return None
-                
-    def get_all_indices(self, n_samples=None, max_samples=None,
-                        random_state=None):
+
+    def get_all_indices(self, n_samples=None, max_samples=None, random_state=None):
         """Get the indices on which to evaluate the fitness of a program.
 
         Parameters
@@ -587,8 +616,10 @@ class _Program(object):
         """
 
         if self._indices_state is None and random_state is None:
-            raise ValueError('The program has not been evaluated for fitness '
-                             'yet, indices not available.')
+            raise ValueError(
+                "The program has not been evaluated for fitness "
+                "yet, indices not available."
+            )
 
         if n_samples is not None and self._n_samples is None:
             self._n_samples = n_samples
@@ -602,11 +633,16 @@ class _Program(object):
 
         not_indices, sample_counts, indices = (), (), ()
         for i in range(len(self._n_samples)):
-            not_indices += (sample_without_replacement(
-                self._n_samples[i],
-                self._n_samples[i] - self._max_samples[i],
-                random_state=indices_state),)
-            sample_counts += (np.bincount(not_indices[i], minlength=self._n_samples[i]),)
+            not_indices += (
+                sample_without_replacement(
+                    self._n_samples[i],
+                    self._n_samples[i] - self._max_samples[i],
+                    random_state=indices_state,
+                ),
+            )
+            sample_counts += (
+                np.bincount(not_indices[i], minlength=self._n_samples[i]),
+            )
             indices += (np.where(sample_counts[i] == 0)[0],)
 
         return indices, not_indices
@@ -620,34 +656,37 @@ class _Program(object):
 
         Parameters
         ----------
-        X : {array-like}, shape = [n_samples, n_features]
-            Training vectors, where n_samples is the number of samples and
-            n_features is the number of features.
+        X : tuple of array-like, shape = ([n_samples, n_features],) * n_examples
+            Tuple of n_examples training vectors, where n_samples is the number of samples and
+            n_features is the number of features. n_samples can vary between examples.
 
-        y : array-like, shape = [n_samples]
-            Target values.
+        y : tuple of array-like, shape = ([n_samples],) * n_examples
+            Tuple of target values. n_samples can vary between examples.
 
-        sample_weight : array-like, shape = [n_samples]
-            Weights applied to individual samples.
+        sample_weight : tuple of array-like, shape = ([n_samples],) * n_examples
+            Tuple of weights applied to individual samples. None sets all weights to 1
+            Optional, default is None
 
         Returns
         -------
         raw_fitness : float
-            The raw fitness of the program.
+            Mean raw fitness of all example's program.
 
         """
-            
+
         y_pred = self.execute(X)
 
         if self.transformer:
-            raise ValueError('You shouldnt only use transformer with this modified package')
-            
+            raise ValueError(
+                "You shouldnt only use transformer with this modified package"
+            )
+
         raw_fitness = ()
         for i in range(len(X)):
             raw_fitness += (self.metric(y[i], y_pred[i], sample_weight[i]),)
 
         raw_fitness = np.mean(raw_fitness)
-            
+
         return raw_fitness
 
     def fitness(self, parsimony_coefficient=None):
@@ -692,8 +731,9 @@ class _Program(object):
             program = self.program
         # Choice of crossover points follows Koza's (1992) widely used approach
         # of choosing functions 90% of the time and leaves 10% of the time.
-        probs = np.array([0.9 if isinstance(node, _Function) else 0.1
-                          for node in program])
+        probs = np.array(
+            [0.9 if isinstance(node, _Function) else 0.1 for node in program]
+        )
         probs = np.cumsum(probs / probs.sum())
         start = np.searchsorted(probs, random_state.uniform())
 
@@ -735,16 +775,19 @@ class _Program(object):
         # Get a subtree to replace
         start, end = self.get_subtree(random_state)
         removed = range(start, end)
-        
+
         # Get a subtree to donate
         donor_start, donor_end = self.get_subtree(random_state, donor)
-        donor_removed = list(set(range(len(donor))) -
-                             set(range(donor_start, donor_end)))
-        
+        donor_removed = list(
+            set(range(len(donor))) - set(range(donor_start, donor_end))
+        )
+
         # Insert genetic material from donor
-        return (self.program[:start] +
-                donor[donor_start:donor_end] +
-                self.program[end:]), removed, donor_removed
+        return (
+            (self.program[:start] + donor[donor_start:donor_end] + self.program[end:]),
+            removed,
+            donor_removed,
+        )
 
     def subtree_mutation(self, random_state):
         """Perform the subtree mutation operation on the program.
@@ -798,8 +841,9 @@ class _Program(object):
         sub_start, sub_end = self.get_subtree(random_state, subtree)
         hoist = subtree[sub_start:sub_end]
         # Determine which nodes were removed for plotting
-        removed = list(set(range(start, end)) -
-                       set(range(start + sub_start, start + sub_end)))
+        removed = list(
+            set(range(start, end)) - set(range(start + sub_start, start + sub_end))
+        )
         return self.program[:start] + hoist + self.program[end:], removed
 
     def point_mutation(self, random_state):
@@ -824,8 +868,9 @@ class _Program(object):
         program = copy(self.program)
 
         # Get the nodes to modify
-        mutate = np.where(random_state.uniform(size=len(program)) <
-                          self.p_point_replace)[0]
+        mutate = np.where(
+            random_state.uniform(size=len(program)) < self.p_point_replace
+        )[0]
 
         for node in mutate:
             if isinstance(program[node], _Function):
@@ -836,22 +881,22 @@ class _Program(object):
                 replacement = self.arities[arity][replacement]
                 program[node] = replacement
             else:
-                # HELP ON RAJOUTE LA POSSIBLITLE DE TIRER DES CONSTANTES
-                # We've got a terminal, add a const or variable
+                # We've got a terminal, add a const, variable or free parameter
                 if self.const_range is not None:
                     terminal = random_state.randint(self.n_features + self.n_free + 1)
                 else:
                     terminal = random_state.randint(self.n_features + self.n_free)
-                    
+
                 if terminal == self.n_features + self.n_free:
                     terminal = random_state.uniform(*self.const_range)
                     if self.const_range is None:
                         # We should never get here
-                        raise ValueError('A constant was produced with '
-                                         'const_range=None.')
-                        
+                        raise ValueError(
+                            "A constant was produced with " "const_range=None."
+                        )
+
                 elif terminal >= self.n_features:
-                    terminal = f'C{terminal-self.n_features}'
+                    terminal = f"C{terminal-self.n_features}"
                 program[node] = terminal
 
         return program, list(mutate)
