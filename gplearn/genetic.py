@@ -330,6 +330,15 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         if type(y) != tuple:
             y = (y,)
             
+        if type(self.addX) != tuple:
+            self.addX = (self.addX,) * np.shape(X)[2]
+                        
+        if type(self.mulX) != tuple:
+            self.mulX = (self.mulX,) * np.shape(X)[2]
+            
+        if (np.shape(X)[2] != len(self.addX)) | (np.shape(X)[2] != len(self.mulX)):
+            raise ValueError('X invariances (addX, mulX) must the same size as X')
+
         if sample_weight == None:
             sample_weight = (None, ) * len(X)
             
@@ -651,7 +660,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
             else:
                 self._program = self._programs[-1][np.argmin(fitness)]
 
-        if (self.n_free>0) | self.addX | self.addY | self.mulX | self.mulY:
+        if (self.n_free>0) | (True in self.addX) | self.addY | (True in self.mulX) | self.mulY:
             print('Best fitted parametric values :')
             print(self._program.current_best_param_fit)
         return self

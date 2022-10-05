@@ -433,17 +433,25 @@ class _Program(object):
         parameters_dict = {}
         p_names = ()
         for i in range(self.n_free):
-            parameters_dict[f'C{i}'] = 0
+            parameters_dict[f'C{i}'] = 1
             p_names += (f'C{i}', )
             
         # Add invariance_param 
-        for invariance_param in [['addX', 0], ['mulX', 1], ['addY', 0], ['mulY', 1]]:
-            if getattr(self, invariance_param[0]):
-                parameters_dict[invariance_param[0]] = invariance_param[1]
-                p_names += (invariance_param[0], )
+
+        for dim in range(len(X[0][1])):
+            for invariance_param in [['addX', 0], ['mulX', 1], ['addY', 0], ['mulY', 1]]:
+                if (invariance_param[0] == 'addX') | (invariance_param[0] == 'mulX'):
+                    valid = getattr(self, invariance_param[0])[dim]
+                    
+                else:
+                    valid = getattr(self, invariance_param[0])
+
+                if valid:
+                    parameters_dict[invariance_param[0] + str(dim)] = invariance_param[1]
+                    p_names += (invariance_param[0] + str(dim), )
             
         # We minimize if we have at least one invariance parameter or if the tree contains at least one free param
-        param_condition = self.addX | self.mulX | self.addY | self.mulY | (len([item for item in list(set(self.program)) if type(item)==str]) != 0)
+        param_condition = (True in self.addX) | (True in self.mulX) | self.addY | self.mulY | (len([item for item in list(set(self.program)) if type(item)==str]) != 0)
         
         if param_condition:
             self.current_best_intermediate_result = np.array([None]*len(X))
@@ -478,25 +486,27 @@ class _Program(object):
         else:
             local_weight = None
             
-        local_X, local_y = self.X[pos].copy(), self.y[pos].copy()
+        local_y = self.y[pos].copy()
+        local_X = self.X[pos].copy()
 
         count_invariance_param = 0
 
-        if self.addX:
-            inv_val = parameters_guess[self.n_free + count_invariance_param]
-            if inv_val != inv_val:
-                inv_val = 0
+        for dim in range(np.shape(local_X)[1]):
+            if self.addX[dim]:
+                inv_val = parameters_guess[self.n_free + count_invariance_param]
+                if inv_val != inv_val:
+                    inv_val = 0
 
-            local_X += inv_val
-            count_invariance_param += 1
+                local_X[:,dim] += inv_val
+                count_invariance_param += 1
 
-        if self.mulX:
-            inv_val = parameters_guess[self.n_free + count_invariance_param]
-            if inv_val != inv_val:
-                inv_val = 1
+            if self.mulX[dim]:
+                inv_val = parameters_guess[self.n_free + count_invariance_param]
+                if inv_val != inv_val:
+                    inv_val = 1
 
-            local_X *= inv_val
-            count_invariance_param += 1
+                local_X[:,dim] *= inv_val
+                count_invariance_param += 1
         
         l = self.program.copy()
         for i in range(self.n_free):
