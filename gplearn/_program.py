@@ -119,6 +119,10 @@ class _Program(object):
         Effectively adds a parameter redefining f(X) such that f(X)' = f(X) * P.
         (applied after translation invariance)
         Optional (default=False).
+        
+    wisunc : boolean, use uncertainties as weights.
+        If true you should input an uncertainty vector as weights.
+        A new weight vector will be computed as propotional to 1/w.
 
 
     Attributes
@@ -169,6 +173,7 @@ class _Program(object):
         addY=False,
         mulX=False,
         mulY=False,
+        wisunc=False,
         transformer=None,
         feature_names=None,
         program=None,
@@ -189,6 +194,7 @@ class _Program(object):
         self.addY = addY
         self.mulX = mulX
         self.mulY = mulY
+        self.wisunc = wisunc
         self.transformer = transformer
         self.feature_names = feature_names
         self.program = program
@@ -416,6 +422,7 @@ class _Program(object):
             The result of executing the program on X.
 
         """
+
         # Check for single-node programs
         node = self.program[0]
 
@@ -468,15 +475,10 @@ class _Program(object):
                     p_names += (invariance_param[0] + str(dim),)
 
         # We minimize if we have at least one invariance parameter or if the tree contains at least one free param
-        param_condition = (
-            (True in self.addX)
-            | (True in self.mulX)
-            | self.addY
-            | self.mulY
-            | (
-                len([item for item in list(set(self.program)) if type(item) == str])
-                != 0
-            )
+        param_condition = ((True in self.addX) | 
+                           (True in self.mulX) | 
+                           self.addY | self.mulY | 
+                           (len([item for item in list(set(self.program)) if type(item) == str])!= 0)
         )
 
         if param_condition:

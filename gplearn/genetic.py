@@ -63,6 +63,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     addY = params["addY"]
     mulX = params["mulX"]
     mulY = params["mulY"]
+    wisunc = params["wisunc"]
 
     max_samples = ()
     for i in range(len(n_samples)):
@@ -155,6 +156,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
             addY=addY,
             mulX=mulX,
             mulY=mulY,
+            wisunc=wisunc,
             feature_names=feature_names,
             random_state=random_state,
             program=program,
@@ -239,7 +241,8 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         addX=False,
         addY=False,
         mulX=False,
-        mulY=False
+        mulY=False,
+        wisunc=False
     ):
 
         self.population_size = population_size
@@ -274,6 +277,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         self.addY = addY
         self.mulX = mulX
         self.mulY = mulY
+        self.wisunc = wisunc
 
     def _verbose_reporter(self, run_details=None):
         """A report of the progress of the evolution process.
@@ -367,6 +371,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
             raise ValueError("X invariances (addX, mulX) must the same size as X")
 
         if sample_weight == None:
+            self.wisunc = False
             sample_weight = (None,) * len(X)
 
         if type(sample_weight) != tuple:
@@ -385,6 +390,18 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                 raise ValueError(
                     "Multiple objects error : all X should have the same number of features"
                 )
+
+        if self.wisunc:
+            new_weights = ()
+            for old in sample_weight:
+                if True in (old<=0):
+                    raise ValueError(
+                    "Uncertainties should be strictly positive"
+                )
+                    
+                new_weights += (old.max()/old,)
+                
+            sample_weight = new_weights
 
         check_X, check_y, check_weight = list(X), list(y), list(sample_weight)
 
@@ -738,13 +755,9 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
             else:
                 self._program = self._programs[-1][np.argmin(fitness)]
 
-        if (
-            (self.n_free > 0)
-            | (True in self.addX)
-            | self.addY
-            | (True in self.mulX)
-            | self.mulY
-        ):
+        if ((self.n_free > 0)| (True in self.addX) |
+            self.addY | (True in self.mulX) | self.mulY):
+            
             print("Best fitted parametric values :")
             print(self._program.current_best_param_fit)
         return self
@@ -947,6 +960,10 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
         Effectively adds a parameter redefining f(X) such that f(X)' = f(X) * P.
         (applied after translation invariance)
         Optional (default=False).
+        
+    wisunc : boolean, use uncertainties as weights.
+        If true you should input an uncertainty vector as weights.
+        A new weight vector will be computed as propotional to 1/w.
 
     Attributes
     ----------
@@ -1004,7 +1021,8 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
         addX=False,
         addY=False,
         mulX=False,
-        mulY=False
+        mulY=False,
+        wisunc=False
     ):
 
         super(SymbolicRegressor, self).__init__(
@@ -1036,6 +1054,7 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
             addY=addY,
             mulX=mulX,
             mulY=mulY,
+            wisunc=wisunc
         )
 
     def __str__(self):
