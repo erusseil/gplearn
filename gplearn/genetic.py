@@ -360,14 +360,24 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
             X = (X,)
         if type(y) != tuple:
             y = (y,)
+            
+        # Case where all examples have the same number of points
+        if len(np.shape(X))==3:
+            dimX = np.shape(X)[2]
+            
+        elif len(np.shape(X))==1:
+            dimX = np.shape(X[0])[1]
+            
+        else:
+            raise ValueError("X shape is wrong")
 
         if type(self.addX) != tuple:
-            self.addX = (self.addX,) * np.shape(X)[2]
+            self.addX = (self.addX,) * dimX
 
         if type(self.mulX) != tuple:
-            self.mulX = (self.mulX,) * np.shape(X)[2]
-
-        if (np.shape(X)[2] != len(self.addX)) | (np.shape(X)[2] != len(self.mulX)):
+            self.mulX = (self.mulX,) * dimX
+                
+        if (dimX != len(self.addX)) | (dimX != len(self.mulX)):
             raise ValueError("X invariances (addX, mulX) must the same size as X")
 
         if sample_weight == None:
@@ -399,7 +409,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                     "Uncertainties should be strictly positive"
                 )
                     
-                new_weights += (old.max()/old,)
+                new_weights += (1/old,)
                 
             sample_weight = new_weights
 
@@ -494,6 +504,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                 "rmse",
                 "pearson",
                 "spearman",
+                "bic",
             ):
                 raise ValueError("Unsupported metric: %s" % self.metric)
             self._metric = _fitness_map[self.metric]

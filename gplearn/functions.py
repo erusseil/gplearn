@@ -42,7 +42,6 @@ class _Function(object):
         self.name = name
         self.arity = arity
 
-    #HELP applique les functions une par une (pas tout l'arbre d'un coup)
     def __call__(self, *args):
         return self.function(*args)
 

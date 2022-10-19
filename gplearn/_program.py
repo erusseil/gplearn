@@ -537,8 +537,12 @@ class _Program(object):
                 count_invariance_param += 1
 
         l = self.program.copy()
+        count_free_parameters = 0
+            
         for i in range(self.n_free):
-            l = [parameters_guess[i] if item == f"C{i}" else item for item in l]
+            if f"C{i}" in l:
+                count_free_parameters += 1
+                l = [parameters_guess[i] if item == f"C{i}" else item for item in l]
 
         apply_stack = []
 
@@ -549,6 +553,7 @@ class _Program(object):
             else:
                 # Lazily evaluate later
                 apply_stack[-1].append(node)
+                
 
             while len(apply_stack[-1]) == apply_stack[-1][0].arity + 1:
                 # Apply functions that have sufficient arguments
@@ -589,8 +594,11 @@ class _Program(object):
                         count_invariance_param += 1
 
                     self.current_best_intermediate_result[pos] = intermediate_result
+                   
+                    param_used = count_invariance_param + count_free_parameters
+                    self.metric.param_used = param_used
                     return self.metric(local_y, intermediate_result, local_weight)
-
+                
         return None
 
     def get_all_indices(self, n_samples=None, max_samples=None, random_state=None):
@@ -684,6 +692,7 @@ class _Program(object):
             )
 
         raw_fitness = ()
+        
         for i in range(len(X)):
             raw_fitness += (self.metric(y[i], y_pred[i], sample_weight[i]),)
 

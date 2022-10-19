@@ -46,7 +46,10 @@ class _Fitness(object):
         self.sign = 1 if greater_is_better else -1
 
     def __call__(self, *args):
-        return self.function(*args)
+        if self.function.__name__ != "_bic":
+            return self.function(*args)
+        else:
+            return self.function(*(args+(self.param_used,)))
 
 
 def make_fitness(*, function, greater_is_better, wrap=True):
@@ -145,6 +148,17 @@ def _log_loss(y, y_pred, w):
     score = y * np.log(y_pred) + (1 - y) * np.log(inv_y_pred)
     return np.average(-score, weights=w)
 
+def _bic(y, y_pred, w, param_used):
+    """MvSR metric : Calculate the Bayesian Information Criterion.
+        To be correct, weights must be the inverse of the 
+        uncertainties (wisunc can be used)"""
+    
+    chi2 = np.sum(((y - y_pred) * w)**2)
+    penalty = param_used * np.log(len(y))
+    reduced_bic = (chi2 + penalty)/(len(y) - param_used)
+    
+    return np.nan_to_num(reduced_bic, nan=float("inf"))
+
 
 weighted_pearson = _Fitness(function=_weighted_pearson,
                             greater_is_better=True)
@@ -158,10 +172,12 @@ root_mean_square_error = _Fitness(function=_root_mean_square_error,
                                   greater_is_better=False)
 log_loss = _Fitness(function=_log_loss,
                     greater_is_better=False)
+bic = _Fitness(function=_bic, greater_is_better=False)
 
 _fitness_map = {'pearson': weighted_pearson,
                 'spearman': weighted_spearman,
                 'mean absolute error': mean_absolute_error,
                 'mse': mean_square_error,
                 'rmse': root_mean_square_error,
-                'log loss': log_loss}
+                'log loss': log_loss,
+                'bic':bic}
