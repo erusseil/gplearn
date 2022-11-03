@@ -420,7 +420,6 @@ class _Program(object):
         -------
         y_hats : array-like, shape = [n_samples]
             The result of executing the program on X.
-
         """
 
         # Check for single-node programs
@@ -512,7 +511,7 @@ class _Program(object):
         if type(self.sample_weight[pos]) != type(None):
             local_weight = self.sample_weight[pos].copy()
         else:
-            local_weight = None
+            local_weight = np.array([1]*len(self.y[pos].copy()))
 
         local_y = self.y[pos].copy()
         local_X = self.X[pos].copy()
